@@ -1,3 +1,4 @@
+# oberoendenyheter
 # Oberoende nyheter
 
 Nyhetssajt byggd med Next.js (App Router) och Tailwind CSS. Just nu används **enbart JSON** som datakälla; databas och integration (t.ex. Make) kommer senare.

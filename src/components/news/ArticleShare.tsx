@@ -26,7 +26,7 @@ export function ArticleShare({ url, title }: ArticleShareProps) {
   const encodedUrl = encodeURIComponent(shareUrl);
   const encodedTitle = encodeURIComponent(shareTitle);
 
-  if (!mounted) {
+  if (!url && !mounted) {
     return (
       <div className="flex flex-wrap items-center gap-3 border-t border-border pt-8 mt-8">
         <span className="mr-2 text-sm text-muted-foreground">Dela artikel:</span>
