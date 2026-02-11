@@ -9,7 +9,7 @@ export default function Home() {
           <NewsList />
         </div>
         <aside className="hidden lg:col-span-3 lg:block">
-          <AdBanner variant="vertical" />
+          <AdBanner variant="vertical" src="/Sebstahadd.png" />
         </aside>
       </div>
     </div>

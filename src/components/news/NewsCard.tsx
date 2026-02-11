@@ -26,11 +26,6 @@ export function NewsCard({ article, variant = "medium" }: NewsCardProps) {
               sizes="(max-width: 1024px) 100vw, 66vw"
               className="object-cover transition-transform duration-500 group-hover:scale-105"
             />
-            <div className="absolute left-4 top-4">
-              <span className="rounded bg-primary px-3 py-1.5 text-xs uppercase tracking-wide text-primary-foreground">
-                {article.category}
-              </span>
-            </div>
           </div>
           <div className="p-6">
             <h2 className="mb-3 line-clamp-2 text-2xl transition-colors group-hover:text-primary">
@@ -54,11 +49,8 @@ export function NewsCard({ article, variant = "medium" }: NewsCardProps) {
 
   return (
     <article className="group cursor-pointer rounded-lg bg-card p-4 transition-shadow hover:shadow-lg">
-      <Link href={`/nyheter/${article.slug}`} className="flex gap-4">
+      <Link href={`/nyheter/${article.slug}`} className="flex min-h-[6rem] items-stretch gap-4">
         <div className="min-w-0 flex-1">
-          <span className="mb-2 block text-xs uppercase tracking-wide text-primary">
-            {article.category}
-          </span>
           <h3 className="mb-2 line-clamp-2 text-base transition-colors group-hover:text-primary">
             {article.title}
           </h3>
@@ -67,13 +59,13 @@ export function NewsCard({ article, variant = "medium" }: NewsCardProps) {
           </p>
           <span className="text-xs text-muted-foreground">{date}</span>
         </div>
-        <div className="relative h-24 w-32 flex-shrink-0 overflow-hidden rounded">
+        <div className="relative w-32 flex-shrink-0 overflow-hidden rounded">
           <ImageWithFallback
             src={article.image}
             alt={article.title}
             fill
             sizes="128px"
-            className="object-cover transition-transform duration-500 group-hover:scale-105"
+            className="object-cover object-center transition-transform duration-500 group-hover:scale-105"
           />
         </div>
       </Link>
