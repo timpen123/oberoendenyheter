@@ -8,7 +8,7 @@ const stageServiceKey = process.env.STAGE__SUPABASE_SERVICE_ROLE_KEY;
 
 export function isSupabaseConfigured(): boolean {
   if (url && serviceKey) return true;
-  if (isSiteUsingStageSupabase()) return true;
+  if (stageUrl && stageServiceKey) return true;
   return false;
 }
 
@@ -29,11 +29,14 @@ export function isSiteUsingStageSupabase(): boolean {
 }
 
 /**
- * Klient för sajtens läsning (nyheter etc.). På preview kan du sätta
- * USE_STAGE_SUPABASE_FOR_SITE=true så läser sajten från stage-DB (samma som Make skriver till).
+ * Klient för sajtens läsning (nyheter etc.).
+ * Använder stage om USE_STAGE_SUPABASE_FOR_SITE=true eller om endast stage är konfigurerat (inga main-vars).
  */
 export function getSupabaseAdminForSite() {
-  if (isSiteUsingStageSupabase() && stageUrl && stageServiceKey) {
+  const useStage =
+    (isSiteUsingStageSupabase() && stageUrl && stageServiceKey) ||
+    (!url && !serviceKey && stageUrl && stageServiceKey);
+  if (useStage && stageUrl && stageServiceKey) {
     return createClient(stageUrl, stageServiceKey, {
       auth: { persistSession: false },
     });
