@@ -152,12 +152,23 @@ export async function POST(req: Request) {
     let parsedBody: unknown;
     try {
       parsedBody = rawBody ? JSON.parse(rawBody) : null;
-    } catch (err) {
-      console.error("JSON parse error:", err);
-      return NextResponse.json(
-        { error: "Invalid JSON", rawBody },
-        { status: 400 }
-      );
+    } catch {
+      if (rawBody && rawBody.trim()) {
+        const text = rawBody.trim();
+        const lines = text.split(/\r?\n/);
+        const firstLine = lines[0] ?? "";
+        const title =
+          firstLine.length > 0 && firstLine.length <= 200
+            ? firstLine
+            : text.length > 200
+              ? text.slice(0, 197) + "..."
+              : text || "Artikel från Make";
+        const body = lines.length > 1 ? text : `<p>${text}</p>`;
+        parsedBody = { title, body };
+        console.log("=== MAKE PLAIN TEXT FALLBACK ===", { title: title.slice(0, 60) });
+      } else {
+        parsedBody = null;
+      }
     }
 
     console.log("=== MAKE PARSED BODY ===");
