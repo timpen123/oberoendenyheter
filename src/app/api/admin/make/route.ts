@@ -30,6 +30,21 @@ function withSlugSuffix(baseSlug: string, attempt: number): string {
   return `${safeBase}-${Date.now()}-${attempt}`;
 }
 
+/** Tar fram ingress från body om excerpt saknas (strippar HTML, max ~200 tecken). */
+function excerptFromBody(body: string, maxLen = 200): string {
+  const plain = body.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  if (plain.length <= maxLen) return plain;
+  const cut = plain.slice(0, maxLen).trim();
+  const last = cut.lastIndexOf(" ");
+  return last > maxLen * 0.6 ? cut.slice(0, last) + "…" : cut + "…";
+}
+
+/** Plockar första img src från HTML-body (fallback när Make inte skickar image). */
+function firstImageFromBody(body: string): string {
+  const match = body.match(/<img[^>]+src\s*=\s*["']([^"']+)["']/i);
+  return match?.[1]?.trim() ?? "";
+}
+
 /** Plockar ut text från vanliga fältnamn (hela blocket från RSS/Apify/OpenAI etc.). */
 function pickText(obj: Record<string, unknown>, keys: string[]): string {
   for (const key of keys) {
@@ -93,13 +108,19 @@ function toArticleInsert(
       ? payload.slug.trim()
       : slugify(title || `artikel-${Date.now()}-${idx}`);
 
+  const excerptRaw = typeof normalized.excerpt === "string" ? normalized.excerpt.trim() : "";
+  const excerpt = excerptRaw || excerptFromBody(body);
+
+  const imageFromPayload = typeof normalized.image === "string" ? normalized.image.trim() : "";
+  const image = imageFromPayload || firstImageFromBody(body);
+
   return {
     row: {
       title,
       body,
       slug,
-      excerpt: typeof normalized.excerpt === "string" ? normalized.excerpt : null,
-      image: typeof normalized.image === "string" ? normalized.image : "",
+      excerpt: excerpt || null,
+      image,
       category: typeof normalized.category === "string" ? normalized.category : "Övrigt",
       read_time:
         typeof normalized.read_time === "string"
