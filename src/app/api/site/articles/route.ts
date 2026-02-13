@@ -12,12 +12,14 @@ export async function GET(request: Request) {
 
     if (isSupabaseConfigured()) {
       const result = await getArticlesListFromSupabase({ page, limit });
+      const dataSource = isSiteUsingStageSupabase() ? "stage" : "main";
       const headers = new Headers();
-      headers.set(
-        "X-Data-Source",
-        isSiteUsingStageSupabase() ? "stage" : "main"
+      headers.set("X-Data-Source", dataSource);
+      headers.set("Cache-Control", "no-store, max-age=0");
+      return NextResponse.json(
+        { ...result, _meta: { dataSource, total: result.total } },
+        { headers }
       );
-      return NextResponse.json(result, { headers });
     }
     const result = getArticlesList({ page, limit });
     return NextResponse.json(result);

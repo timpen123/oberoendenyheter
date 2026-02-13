@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Clock } from "lucide-react";
 import { ImageWithFallback } from "@/components/ui/ImageWithFallback";
 import type { Article } from "@/lib/types";
+import { getArticleDisplayImage } from "@/lib/articleUtils";
 import { formatArticleDate } from "@/lib/formatDate";
 
 interface NewsCardProps {
@@ -13,6 +14,7 @@ interface NewsCardProps {
 
 export function NewsCard({ article, variant = "medium" }: NewsCardProps) {
   const date = formatArticleDate(article.published_at ?? article.created_at);
+  const imageUrl = getArticleDisplayImage(article);
 
   if (variant === "featured") {
     return (
@@ -20,7 +22,7 @@ export function NewsCard({ article, variant = "medium" }: NewsCardProps) {
         <Link href={`/nyheter/${article.slug}`} className="block">
           <div className="relative aspect-[21/9] overflow-hidden">
             <ImageWithFallback
-              src={article.image}
+              src={imageUrl}
               alt={article.title}
               fill
               sizes="(max-width: 1024px) 100vw, 66vw"
@@ -61,7 +63,7 @@ export function NewsCard({ article, variant = "medium" }: NewsCardProps) {
         </div>
         <div className="relative w-32 flex-shrink-0 overflow-hidden rounded">
           <ImageWithFallback
-            src={article.image}
+            src={imageUrl}
             alt={article.title}
             fill
             sizes="128px"

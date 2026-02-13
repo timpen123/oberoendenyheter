@@ -4,6 +4,7 @@ import { ImageWithFallback } from "@/components/ui/ImageWithFallback";
 import { NewsCard } from "./NewsCard";
 import { ArticleShare } from "./ArticleShare";
 import type { Article } from "@/lib/types";
+import { getArticleDisplayImage } from "@/lib/articleUtils";
 import { formatArticleDate } from "@/lib/formatDate";
 
 interface ArticleDetailContentProps {
@@ -15,12 +16,13 @@ interface ArticleDetailContentProps {
 export function ArticleDetailContent({ article, relatedArticles, baseUrl }: ArticleDetailContentProps) {
   const date = formatArticleDate(article.published_at ?? article.created_at);
   const articleUrl = baseUrl ? `${baseUrl.replace(/\/$/, "")}/nyheter/${article.slug}` : undefined;
+  const imageUrl = getArticleDisplayImage(article);
 
   return (
     <article className="mx-auto max-w-3xl overflow-hidden rounded-lg bg-card shadow-2xl">
       <div className="relative aspect-video w-full">
         <ImageWithFallback
-          src={article.image}
+          src={imageUrl}
           alt={article.title}
           fill
           sizes="(max-width: 768px) 100vw, 896px"
