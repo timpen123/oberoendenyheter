@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+/** POST – skicka kontaktmeddelande (webbplatsformulär). */
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -15,7 +16,7 @@ export async function POST(request: Request) {
     // TODO: Skicka e-post (t.ex. Resend) eller spara i databas
     return NextResponse.json({ success: true });
   } catch (err) {
-    console.error("[POST /api/contact]", err);
+    console.error("[POST /api/site/contact]", err);
     return NextResponse.json(
       { error: "Kunde inte skicka meddelandet" },
       { status: 500 }

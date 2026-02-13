@@ -18,7 +18,7 @@ export function NewsList() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/articles?limit=50")
+    fetch("/api/site/articles?limit=50")
       .then((res) => {
         if (!res.ok) throw new Error("Kunde inte hämta nyheter");
         return res.json();

@@ -25,6 +25,9 @@ export interface ArticleInsert {
   slug?: string;
   excerpt?: string | null;
   body: string;
+  image?: string;
+  category?: string;
+  read_time?: string;
   published_at?: string | null;
   source?: string | null;
   external_id?: string | null;
