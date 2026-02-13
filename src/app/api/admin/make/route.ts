@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { getArticlesTableName } from "@/lib/supabase";
 
 function getStageClient() {
   const url = process.env.STAGE__SUPABASE_URL;
@@ -141,8 +142,9 @@ function toArticleInsert(
 export async function GET() {
   try {
     const supabase = getStageClient();
+    const table = getArticlesTableName();
     const { data, error } = await supabase
-      .from("articles")
+      .from(table)
       .select("id,title,slug,created_at,published_at")
       .order("created_at", { ascending: false })
       .limit(20);
@@ -232,6 +234,7 @@ export async function POST(req: Request) {
     }
 
     const supabase = getStageClient();
+    const table = getArticlesTableName();
     const inserted: Array<Record<string, unknown>> = [];
     const failed: Array<{ slug: string; error: string }> = [];
 
@@ -241,7 +244,7 @@ export async function POST(req: Request) {
 
       for (let attempt = 1; attempt <= 3; attempt++) {
         const { data, error } = await supabase
-          .from("articles")
+          .from(table)
           .insert(payload)
           .select("id,title,slug,created_at")
           .single();
@@ -254,7 +257,7 @@ export async function POST(req: Request) {
 
         const isDuplicateSlug =
           error.code === "23505" &&
-          String(error.message).includes("articles_slug_key");
+          String(error.message).includes(`${table}_slug_key`);
 
         if (isDuplicateSlug) {
           const currentSlug =

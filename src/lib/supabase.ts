@@ -24,19 +24,37 @@ export function getSupabaseAdmin() {
 
 /** Om sajten just nu läser från stage (true) eller main (false). */
 export function isSiteUsingStageSupabase(): boolean {
-  const v = (process.env.USE_STAGE_SUPABASE_FOR_SITE ?? "").trim().toLowerCase();
-  return (v === "true" || v === "1") && Boolean(stageUrl && stageServiceKey);
+  return getSiteSupabaseDataSource() === "stage";
+}
+
+export type SiteSupabaseDataSource = "stage" | "main";
+
+/**
+ * Avgör vilken datakälla site-läsning ska använda.
+ *
+ * Prioritet:
+ * 1) USE_STAGE_SUPABASE_FOR_SITE=false|0|main => main (explicit override)
+ * 2) Om stage är konfigurerad => stage (default)
+ * 3) Annars main
+ */
+export function getSiteSupabaseDataSource(): SiteSupabaseDataSource {
+  const hasStage = Boolean(stageUrl && stageServiceKey);
+  const raw = (process.env.USE_STAGE_SUPABASE_FOR_SITE ?? "").trim().toLowerCase();
+  if (raw === "false" || raw === "0" || raw === "main") return "main";
+  if (hasStage && (raw === "true" || raw === "1" || raw === "stage")) return "stage";
+
+  if (hasStage) return "stage";
+
+  return "main";
 }
 
 /**
  * Klient för sajtens läsning (nyheter etc.).
- * Använder stage om USE_STAGE_SUPABASE_FOR_SITE=true eller om endast stage är konfigurerat (inga main-vars).
+ * Använder stage om USE_STAGE_SUPABASE_FOR_SITE=true, eller om Vercel-URL innehåller "stage"/"preview" (och stage-vars finns).
  */
 export function getSupabaseAdminForSite() {
-  const useStage =
-    (isSiteUsingStageSupabase() && stageUrl && stageServiceKey) ||
-    (!url && !serviceKey && stageUrl && stageServiceKey);
-  if (useStage && stageUrl && stageServiceKey) {
+  const source = getSiteSupabaseDataSource();
+  if (source === "stage" && stageUrl && stageServiceKey) {
     return createClient(stageUrl, stageServiceKey, {
       auth: { persistSession: false },
     });

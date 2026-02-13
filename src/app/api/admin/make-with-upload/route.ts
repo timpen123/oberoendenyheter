@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { getArticlesTableName } from "@/lib/supabase";
 
 const BUCKET = "article-images";
 const MAX_SIZE_MB = 4;
@@ -35,6 +36,62 @@ function getFormString(form: FormData, key: string): string {
   return typeof v === "string" ? v.trim() : "";
 }
 
+function looksLikeJsonObject(input: string): boolean {
+  const s = input.trim();
+  return s.startsWith("{") && s.endsWith("}");
+}
+
+type CombinedPayload = {
+  title?: string;
+  body?: string;
+  excerpt?: string;
+  category?: string;
+  read_time?: string;
+  source?: string;
+  external_id?: string;
+};
+
+/**
+ * Stöd för "2-item"-flöde i Make:
+ * - item 1: file
+ * - item 2: key=body med antingen:
+ *   a) JSON-sträng ({ title, body, ... })
+ *   b) text där första raden är titel och resten är body
+ */
+function parseCombinedBodyField(input: string): CombinedPayload | null {
+  const raw = input.trim();
+  if (!raw) return null;
+
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === "object") {
+      const obj = parsed as Record<string, unknown>;
+      const title = typeof obj.title === "string" ? obj.title.trim() : "";
+      const body = typeof obj.body === "string" ? obj.body.trim() : "";
+      return {
+        title: title || undefined,
+        body: body || undefined,
+        excerpt: typeof obj.excerpt === "string" ? obj.excerpt.trim() : undefined,
+        category: typeof obj.category === "string" ? obj.category.trim() : undefined,
+        read_time: typeof obj.read_time === "string" ? obj.read_time.trim() : undefined,
+        source: typeof obj.source === "string" ? obj.source.trim() : undefined,
+        external_id: typeof obj.external_id === "string" ? obj.external_id.trim() : undefined,
+      };
+    }
+  } catch {
+    // Inte JSON – fortsätt med texttolkning nedan.
+  }
+
+  const lines = raw.split(/\r?\n/).map((l) => l.trim());
+  const nonEmpty = lines.filter(Boolean);
+  if (nonEmpty.length < 2) return null;
+
+  const title = nonEmpty[0];
+  const body = nonEmpty.slice(1).join("\n").trim();
+  if (!title || !body) return null;
+  return { title, body };
+}
+
 /**
  * POST – ett steg i Make: skicka bild + artikeldata i samma anrop.
  * Multipart/form-data med:
@@ -55,11 +112,34 @@ export async function POST(request: Request) {
       }
     }
 
-    const title = getFormString(formData, "title");
-    const body = getFormString(formData, "body");
+    let title = getFormString(formData, "title");
+    let body = getFormString(formData, "body");
+
+    let parsedCombined: CombinedPayload | null = null;
+
+    // Om body är JSON-sträng med {title, body, ...} ska vi alltid normalisera den,
+    // även om title redan skickats separat.
+    if (body && looksLikeJsonObject(body)) {
+      parsedCombined = parseCombinedBodyField(body);
+      if (!title) title = parsedCombined?.title ?? "";
+      if (parsedCombined?.body) body = parsedCombined.body;
+    } else if (!title || !body) {
+      parsedCombined = parseCombinedBodyField(body);
+      if (!title) title = parsedCombined?.title ?? "";
+      if (parsedCombined?.body) {
+        const rawLooksLikeJson = body.trim().startsWith("{") || body.trim().startsWith("[");
+        if (!body || body === title || rawLooksLikeJson) {
+          body = parsedCombined.body;
+        }
+      }
+    }
+
     if (!title || !body) {
       return NextResponse.json(
-        { error: "title och body krävs (och minst en bildfil)" },
+        {
+          error:
+            "title och body krävs från Make. Skicka separata fält, eller key=body med JSON ({title,body,...}) alternativt första raden=titel och resten=body.",
+        },
         { status: 400 }
       );
     }
@@ -96,8 +176,18 @@ export async function POST(request: Request) {
       imageUrl = urlData.publicUrl;
     }
 
-    const excerpt = getFormString(formData, "excerpt") || excerptFromBody(body);
-    const category = getFormString(formData, "category") || "Övrigt";
+    let excerptInput = getFormString(formData, "excerpt");
+    if (excerptInput && looksLikeJsonObject(excerptInput)) {
+      const parsedExcerpt = parseCombinedBodyField(excerptInput);
+      if (parsedExcerpt?.excerpt) {
+        excerptInput = parsedExcerpt.excerpt;
+      } else if (parsedExcerpt?.body) {
+        excerptInput = excerptFromBody(parsedExcerpt.body);
+      }
+    }
+
+    const excerpt = excerptInput || parsedCombined?.excerpt || excerptFromBody(body);
+    const category = getFormString(formData, "category") || parsedCombined?.category || "Övrigt";
     const slug = slugify(title) || `artikel-${Date.now()}`;
 
     const row = {
@@ -107,15 +197,16 @@ export async function POST(request: Request) {
       excerpt: excerpt || null,
       image: imageUrl,
       category,
-      read_time: getFormString(formData, "read_time") || "1 min",
+      read_time: getFormString(formData, "read_time") || parsedCombined?.read_time || "1 min",
       published_at: null as string | null,
-      source: getFormString(formData, "source") || null,
-      external_id: getFormString(formData, "external_id") || null,
+      source: getFormString(formData, "source") || parsedCombined?.source || null,
+      external_id: getFormString(formData, "external_id") || parsedCombined?.external_id || null,
     };
 
     const supabase = getStageClient();
+    const table = getArticlesTableName();
     const { data: inserted, error } = await supabase
-      .from("articles")
+      .from(table)
       .insert(row)
       .select("id,title,slug,image,created_at")
       .single();
@@ -124,7 +215,7 @@ export async function POST(request: Request) {
       if (error.code === "23505" && String(error.message).includes("slug")) {
         const retrySlug = `${slug}-${Date.now()}`;
         const { data: retryData, error: retryError } = await supabase
-          .from("articles")
+          .from(table)
           .insert({ ...row, slug: retrySlug })
           .select("id,title,slug,image,created_at")
           .single();
