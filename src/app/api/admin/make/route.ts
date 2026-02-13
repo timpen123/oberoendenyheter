@@ -25,12 +25,67 @@ function slugify(input: string): string {
     .replace(/-+/g, "-");
 }
 
+function withSlugSuffix(baseSlug: string, attempt: number): string {
+  const safeBase = baseSlug || `artikel-${Date.now()}`;
+  return `${safeBase}-${Date.now()}-${attempt}`;
+}
+
+/** Plockar ut text från vanliga fältnamn (hela blocket från RSS/Apify/OpenAI etc.). */
+function pickText(obj: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const v = obj[key];
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return "";
+}
+
+/** Normaliserar ett "helt block" till våra artikel-fält. */
+function normalizePayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const title = pickText(payload, [
+    "title",
+    "headline",
+    "name",
+    "subject",
+    "label",
+  ]);
+  const body = pickText(payload, [
+    "body",
+    "content",
+    "description",
+    "text",
+    "html",
+    "summary",
+  ]);
+  const excerpt = pickText(payload, ["excerpt", "summary", "snippet", "description"]);
+  const image = pickText(payload, ["image", "imageUrl", "thumbnail", "enclosure", "url"]);
+  let category = pickText(payload, ["category", "section", "channel", "type"]);
+  if (!category && Array.isArray(payload.categories) && payload.categories.length > 0) {
+    const first = payload.categories[0];
+    category = typeof first === "string" ? first.trim() : "";
+  }
+  if (!category) category = "Övrigt";
+  const source = pickText(payload, ["source", "url", "link", "canonical"]);
+  const externalId = pickText(payload, ["external_id", "id", "guid", "uuid"]);
+
+  return {
+    ...payload,
+    title: title || (payload.title as string),
+    body: body || (payload.body as string),
+    excerpt: excerpt || (payload.excerpt as string) || null,
+    image: image || (payload.image as string) || "",
+    category: category || (payload.category as string) || "Övrigt",
+    source: source || (payload.source as string) || null,
+    external_id: externalId || (payload.external_id as string) || null,
+  };
+}
+
 function toArticleInsert(
   payload: Record<string, unknown>,
   idx: number
 ): { row: Record<string, unknown> | null; reason?: string } {
-  const title = typeof payload.title === "string" ? payload.title.trim() : "";
-  const body = typeof payload.body === "string" ? payload.body.trim() : "";
+  const normalized = normalizePayload(payload);
+  const title = typeof normalized.title === "string" ? normalized.title.trim() : "";
+  const body = typeof normalized.body === "string" ? normalized.body.trim() : "";
   if (!title || !body) return { row: null, reason: "missing_title_or_body" };
 
   const slug =
@@ -40,23 +95,23 @@ function toArticleInsert(
 
   return {
     row: {
-    title,
-    body,
-    slug,
-    excerpt: typeof payload.excerpt === "string" ? payload.excerpt : null,
-    image: typeof payload.image === "string" ? payload.image : "",
-    category: typeof payload.category === "string" ? payload.category : "Övrigt",
-    read_time:
-      typeof payload.read_time === "string"
-        ? payload.read_time
-        : typeof payload.readTime === "string"
-          ? payload.readTime
-          : "1 min",
-    published_at:
-      typeof payload.published_at === "string" ? payload.published_at : null,
-    source: typeof payload.source === "string" ? payload.source : null,
-    external_id:
-      typeof payload.external_id === "string" ? payload.external_id : null,
+      title,
+      body,
+      slug,
+      excerpt: typeof normalized.excerpt === "string" ? normalized.excerpt : null,
+      image: typeof normalized.image === "string" ? normalized.image : "",
+      category: typeof normalized.category === "string" ? normalized.category : "Övrigt",
+      read_time:
+        typeof normalized.read_time === "string"
+          ? normalized.read_time
+          : typeof normalized.readTime === "string"
+            ? normalized.readTime
+            : "1 min",
+      published_at:
+        typeof normalized.published_at === "string" ? normalized.published_at : null,
+      source: typeof normalized.source === "string" ? normalized.source : null,
+      external_id:
+        typeof normalized.external_id === "string" ? normalized.external_id : null,
     },
   };
 }
@@ -108,23 +163,24 @@ export async function POST(req: Request) {
     console.log("=== MAKE PARSED BODY ===");
     console.log(parsedBody);
 
+    const toItems = (arr: unknown[]): Record<string, unknown>[] =>
+      arr.filter(
+        (item): item is Record<string, unknown> =>
+          typeof item === "object" && item !== null
+      );
+
     let incomingItems: Record<string, unknown>[] = [];
     if (Array.isArray(parsedBody)) {
-      incomingItems = parsedBody.filter(
-        (item): item is Record<string, unknown> =>
-          typeof item === "object" && item !== null
-      );
-    } else if (
-      parsedBody &&
-      typeof parsedBody === "object" &&
-      Array.isArray((parsedBody as Record<string, unknown>).articles)
-    ) {
-      incomingItems = ((parsedBody as Record<string, unknown>).articles as unknown[]).filter(
-        (item): item is Record<string, unknown> =>
-          typeof item === "object" && item !== null
-      );
+      incomingItems = toItems(parsedBody);
     } else if (parsedBody && typeof parsedBody === "object") {
-      incomingItems = [parsedBody as Record<string, unknown>];
+      const obj = parsedBody as Record<string, unknown>;
+      const arr =
+        obj.articles ?? obj.items ?? obj.data ?? obj.results ?? obj.entries;
+      if (Array.isArray(arr)) {
+        incomingItems = toItems(arr);
+      } else {
+        incomingItems = [obj];
+      }
     }
 
     const transformed = incomingItems.map((item, idx) => toArticleInsert(item, idx));
@@ -144,25 +200,64 @@ export async function POST(req: Request) {
     }
 
     const supabase = getStageClient();
-    const { data: inserted, error: insertError } = await supabase
-      .from("articles")
-      .insert(rowsToInsert)
-      .select("id,title,slug,created_at");
+    const inserted: Array<Record<string, unknown>> = [];
+    const failed: Array<{ slug: string; error: string }> = [];
 
-    if (insertError) {
-      console.error("Stage insert error:", insertError);
-      return NextResponse.json(
-        { error: insertError.message || "Kunde inte spara i stage DB" },
-        { status: 500 }
-      );
+    for (const row of rowsToInsert) {
+      let payload = { ...row } as Record<string, unknown>;
+      let didInsert = false;
+
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        const { data, error } = await supabase
+          .from("articles")
+          .insert(payload)
+          .select("id,title,slug,created_at")
+          .single();
+
+        if (!error) {
+          inserted.push(data as Record<string, unknown>);
+          didInsert = true;
+          break;
+        }
+
+        const isDuplicateSlug =
+          error.code === "23505" &&
+          String(error.message).includes("articles_slug_key");
+
+        if (isDuplicateSlug) {
+          const currentSlug =
+            typeof payload.slug === "string" ? payload.slug : slugify("artikel");
+          payload = {
+            ...payload,
+            slug: withSlugSuffix(currentSlug, attempt),
+          };
+          continue;
+        }
+
+        console.error("Stage insert error:", error);
+        failed.push({
+          slug: typeof payload.slug === "string" ? payload.slug : "unknown",
+          error: error.message || "Unknown insert error",
+        });
+        break;
+      }
+
+      if (!didInsert) {
+        const slug = typeof payload.slug === "string" ? payload.slug : "unknown";
+        if (!failed.some((f) => f.slug === slug)) {
+          failed.push({ slug, error: "Kunde inte spara efter retries" });
+        }
+      }
     }
 
     return NextResponse.json({
       success: true,
       received: parsedBody,
-      insertedCount: inserted?.length ?? 0,
+      insertedCount: inserted.length,
       skippedCount,
       inserted,
+      failedCount: failed.length,
+      failed,
     });
   } catch (error) {
     console.error("Make route error:", error);
