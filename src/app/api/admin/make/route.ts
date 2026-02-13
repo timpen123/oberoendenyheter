@@ -25,6 +25,42 @@ function slugify(input: string): string {
     .replace(/-+/g, "-");
 }
 
+function toArticleInsert(
+  payload: Record<string, unknown>,
+  idx: number
+): { row: Record<string, unknown> | null; reason?: string } {
+  const title = typeof payload.title === "string" ? payload.title.trim() : "";
+  const body = typeof payload.body === "string" ? payload.body.trim() : "";
+  if (!title || !body) return { row: null, reason: "missing_title_or_body" };
+
+  const slug =
+    typeof payload.slug === "string" && payload.slug.trim()
+      ? payload.slug.trim()
+      : slugify(title || `artikel-${Date.now()}-${idx}`);
+
+  return {
+    row: {
+    title,
+    body,
+    slug,
+    excerpt: typeof payload.excerpt === "string" ? payload.excerpt : null,
+    image: typeof payload.image === "string" ? payload.image : "",
+    category: typeof payload.category === "string" ? payload.category : "Övrigt",
+    read_time:
+      typeof payload.read_time === "string"
+        ? payload.read_time
+        : typeof payload.readTime === "string"
+          ? payload.readTime
+          : "1 min",
+    published_at:
+      typeof payload.published_at === "string" ? payload.published_at : null,
+    source: typeof payload.source === "string" ? payload.source : null,
+    external_id:
+      typeof payload.external_id === "string" ? payload.external_id : null,
+    },
+  };
+}
+
 /** GET – snabb kontroll för att läsa data från stage articles. */
 export async function GET() {
   try {
@@ -72,47 +108,46 @@ export async function POST(req: Request) {
     console.log("=== MAKE PARSED BODY ===");
     console.log(parsedBody);
 
-    const payload = (parsedBody ?? {}) as Record<string, unknown>;
-    const title = typeof payload.title === "string" ? payload.title.trim() : "";
-    const body = typeof payload.body === "string" ? payload.body.trim() : "";
-    const slug =
-      typeof payload.slug === "string" && payload.slug.trim()
-        ? payload.slug.trim()
-        : slugify(title || `artikel-${Date.now()}`);
-
-    if (!title || !body) {
-      return NextResponse.json(
-        {
-          error: "title och body krävs i Make payload",
-          received: payload,
-        },
-        { status: 400 }
+    let incomingItems: Record<string, unknown>[] = [];
+    if (Array.isArray(parsedBody)) {
+      incomingItems = parsedBody.filter(
+        (item): item is Record<string, unknown> =>
+          typeof item === "object" && item !== null
       );
+    } else if (
+      parsedBody &&
+      typeof parsedBody === "object" &&
+      Array.isArray((parsedBody as Record<string, unknown>).articles)
+    ) {
+      incomingItems = ((parsedBody as Record<string, unknown>).articles as unknown[]).filter(
+        (item): item is Record<string, unknown> =>
+          typeof item === "object" && item !== null
+      );
+    } else if (parsedBody && typeof parsedBody === "object") {
+      incomingItems = [parsedBody as Record<string, unknown>];
+    }
+
+    const transformed = incomingItems.map((item, idx) => toArticleInsert(item, idx));
+    const rowsToInsert = transformed
+      .map((t) => t.row)
+      .filter((row): row is Record<string, unknown> => row !== null);
+    const skippedCount = transformed.length - rowsToInsert.length;
+
+    if (rowsToInsert.length === 0) {
+      return NextResponse.json({
+        success: true,
+        received: parsedBody,
+        insertedCount: 0,
+        skippedCount,
+        message: "Inga giltiga artiklar att spara (okända fält ignoreras).",
+      });
     }
 
     const supabase = getStageClient();
     const { data: inserted, error: insertError } = await supabase
       .from("articles")
-      .insert({
-        title,
-        body,
-        slug,
-        excerpt: typeof payload.excerpt === "string" ? payload.excerpt : null,
-        image: typeof payload.image === "string" ? payload.image : "",
-        category:
-          typeof payload.category === "string" ? payload.category : "Övrigt",
-        read_time:
-          typeof payload.read_time === "string" ? payload.read_time : "1 min",
-        published_at:
-          typeof payload.published_at === "string"
-            ? payload.published_at
-            : null,
-        source: typeof payload.source === "string" ? payload.source : null,
-        external_id:
-          typeof payload.external_id === "string" ? payload.external_id : null,
-      })
-      .select("id,title,slug,created_at")
-      .single();
+      .insert(rowsToInsert)
+      .select("id,title,slug,created_at");
 
     if (insertError) {
       console.error("Stage insert error:", insertError);
@@ -125,6 +160,8 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       received: parsedBody,
+      insertedCount: inserted?.length ?? 0,
+      skippedCount,
       inserted,
     });
   } catch (error) {
