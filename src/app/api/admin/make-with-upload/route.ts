@@ -36,15 +36,6 @@ function getFormString(form: FormData, key: string): string {
   return typeof v === "string" ? v.trim() : "";
 }
 
-function makeTitleFromBody(input: string, maxLen = 90): string {
-  const plain = input.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-  if (!plain) return "";
-  const sentenceEnd = plain.search(/[.!?]\s/);
-  const firstSentence =
-    sentenceEnd > 20 && sentenceEnd < maxLen ? plain.slice(0, sentenceEnd + 1) : plain.slice(0, maxLen);
-  return firstSentence.trim();
-}
-
 function looksLikeJsonObject(input: string): boolean {
   const s = input.trim();
   return s.startsWith("{") && s.endsWith("}");
@@ -143,16 +134,11 @@ export async function POST(request: Request) {
       }
     }
 
-    // Make-flöde med bara key=body: generera titel automatiskt från innehållet.
-    if (!title && body) {
-      title = makeTitleFromBody(body) || `Artikel ${Date.now()}`;
-    }
-
-    if (!body) {
+    if (!title || !body) {
       return NextResponse.json(
         {
           error:
-            "body krävs. Skicka key=body med text eller JSON ({title,body,...}). title kan utelämnas och genereras då automatiskt.",
+            "title och body krävs från Make. Skicka separata fält, eller key=body med JSON ({title,body,...}) alternativt första raden=titel och resten=body.",
         },
         { status: 400 }
       );
