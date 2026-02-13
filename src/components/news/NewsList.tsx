@@ -1,34 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { NewsCard } from "./NewsCard";
 import { AdBanner } from "@/components/ads/AdBanner";
-import type { Article } from "@/lib/types";
+import { useArticles } from "@/hooks/useArticles";
 
-interface NewsListResult {
-  articles: Article[];
-  total: number;
-  page: number;
-  limit: number;
-}
+const DEFAULT_LIMIT = 50;
 
 export function NewsList() {
-  const [data, setData] = useState<NewsListResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { data, error, isLoading } = useArticles({ limit: DEFAULT_LIMIT });
 
-  useEffect(() => {
-    fetch("/api/site/articles?limit=50")
-      .then((res) => {
-        if (!res.ok) throw new Error("Kunde inte hämta nyheter");
-        return res.json();
-      })
-      .then(setData)
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="py-8 text-center text-muted-foreground">
         Laddar nyheter…
@@ -54,8 +35,7 @@ export function NewsList() {
 
   const items: React.ReactNode[] = [];
   data.articles.forEach((article, i) => {
-    const position = i % 7;
-    const variant = position === 0 ? "featured" : "medium";
+    const variant = i % 7 === 0 ? "featured" : "medium";
     items.push(
       <NewsCard key={article.id} article={article} variant={variant} />
     );

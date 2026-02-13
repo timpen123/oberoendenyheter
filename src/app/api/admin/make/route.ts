@@ -25,6 +25,118 @@ function slugify(input: string): string {
     .replace(/-+/g, "-");
 }
 
+function withSlugSuffix(baseSlug: string, attempt: number): string {
+  const safeBase = baseSlug || `artikel-${Date.now()}`;
+  return `${safeBase}-${Date.now()}-${attempt}`;
+}
+
+/** Tar fram ingress från body om excerpt saknas (strippar HTML, max ~200 tecken). */
+function excerptFromBody(body: string, maxLen = 200): string {
+  const plain = body.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  if (plain.length <= maxLen) return plain;
+  const cut = plain.slice(0, maxLen).trim();
+  const last = cut.lastIndexOf(" ");
+  return last > maxLen * 0.6 ? cut.slice(0, last) + "…" : cut + "…";
+}
+
+/** Plockar första img src från HTML-body (fallback när Make inte skickar image). */
+function firstImageFromBody(body: string): string {
+  const match = body.match(/<img[^>]+src\s*=\s*["']([^"']+)["']/i);
+  return match?.[1]?.trim() ?? "";
+}
+
+/** Plockar ut text från vanliga fältnamn (hela blocket från RSS/Apify/OpenAI etc.). */
+function pickText(obj: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const v = obj[key];
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return "";
+}
+
+/** Normaliserar ett "helt block" till våra artikel-fält. */
+function normalizePayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const title = pickText(payload, [
+    "title",
+    "headline",
+    "name",
+    "subject",
+    "label",
+  ]);
+  const body = pickText(payload, [
+    "body",
+    "content",
+    "description",
+    "text",
+    "html",
+    "summary",
+  ]);
+  const excerpt = pickText(payload, ["excerpt", "summary", "snippet", "description"]);
+  const image = pickText(payload, ["image", "imageUrl", "thumbnail", "enclosure", "url"]);
+  let category = pickText(payload, ["category", "section", "channel", "type"]);
+  if (!category && Array.isArray(payload.categories) && payload.categories.length > 0) {
+    const first = payload.categories[0];
+    category = typeof first === "string" ? first.trim() : "";
+  }
+  if (!category) category = "Övrigt";
+  const source = pickText(payload, ["source", "url", "link", "canonical"]);
+  const externalId = pickText(payload, ["external_id", "id", "guid", "uuid"]);
+
+  return {
+    ...payload,
+    title: title || (payload.title as string),
+    body: body || (payload.body as string),
+    excerpt: excerpt || (payload.excerpt as string) || null,
+    image: image || (payload.image as string) || "",
+    category: category || (payload.category as string) || "Övrigt",
+    source: source || (payload.source as string) || null,
+    external_id: externalId || (payload.external_id as string) || null,
+  };
+}
+
+function toArticleInsert(
+  payload: Record<string, unknown>,
+  idx: number
+): { row: Record<string, unknown> | null; reason?: string } {
+  const normalized = normalizePayload(payload);
+  const title = typeof normalized.title === "string" ? normalized.title.trim() : "";
+  const body = typeof normalized.body === "string" ? normalized.body.trim() : "";
+  if (!title || !body) return { row: null, reason: "missing_title_or_body" };
+
+  const slug =
+    typeof payload.slug === "string" && payload.slug.trim()
+      ? payload.slug.trim()
+      : slugify(title || `artikel-${Date.now()}-${idx}`);
+
+  const excerptRaw = typeof normalized.excerpt === "string" ? normalized.excerpt.trim() : "";
+  const excerpt = excerptRaw || excerptFromBody(body);
+
+  const imageFromPayload = typeof normalized.image === "string" ? normalized.image.trim() : "";
+  const image = imageFromPayload || firstImageFromBody(body);
+
+  return {
+    row: {
+      title,
+      body,
+      slug,
+      excerpt: excerpt || null,
+      image,
+      category: typeof normalized.category === "string" ? normalized.category : "Övrigt",
+      read_time:
+        typeof normalized.read_time === "string"
+          ? normalized.read_time
+          : typeof normalized.readTime === "string"
+            ? normalized.readTime
+            : "1 min",
+      published_at:
+        typeof normalized.published_at === "string" ? normalized.published_at : null,
+      source: typeof normalized.source === "string" ? normalized.source : null,
+      external_id:
+        typeof normalized.external_id === "string" ? normalized.external_id : null,
+    },
+  };
+}
+
 /** GET – snabb kontroll för att läsa data från stage articles. */
 export async function GET() {
   try {
@@ -61,71 +173,123 @@ export async function POST(req: Request) {
     let parsedBody: unknown;
     try {
       parsedBody = rawBody ? JSON.parse(rawBody) : null;
-    } catch (err) {
-      console.error("JSON parse error:", err);
-      return NextResponse.json(
-        { error: "Invalid JSON", rawBody },
-        { status: 400 }
-      );
+    } catch {
+      if (rawBody && rawBody.trim()) {
+        const text = rawBody.trim();
+        const lines = text.split(/\r?\n/);
+        const firstLine = lines[0] ?? "";
+        const title =
+          firstLine.length > 0 && firstLine.length <= 200
+            ? firstLine
+            : text.length > 200
+              ? text.slice(0, 197) + "..."
+              : text || "Artikel från Make";
+        const body = lines.length > 1 ? text : `<p>${text}</p>`;
+        parsedBody = { title, body };
+        console.log("=== MAKE PLAIN TEXT FALLBACK ===", { title: title.slice(0, 60) });
+      } else {
+        parsedBody = null;
+      }
     }
 
     console.log("=== MAKE PARSED BODY ===");
     console.log(parsedBody);
 
-    const payload = (parsedBody ?? {}) as Record<string, unknown>;
-    const title = typeof payload.title === "string" ? payload.title.trim() : "";
-    const body = typeof payload.body === "string" ? payload.body.trim() : "";
-    const slug =
-      typeof payload.slug === "string" && payload.slug.trim()
-        ? payload.slug.trim()
-        : slugify(title || `artikel-${Date.now()}`);
-
-    if (!title || !body) {
-      return NextResponse.json(
-        {
-          error: "title och body krävs i Make payload",
-          received: payload,
-        },
-        { status: 400 }
+    const toItems = (arr: unknown[]): Record<string, unknown>[] =>
+      arr.filter(
+        (item): item is Record<string, unknown> =>
+          typeof item === "object" && item !== null
       );
+
+    let incomingItems: Record<string, unknown>[] = [];
+    if (Array.isArray(parsedBody)) {
+      incomingItems = toItems(parsedBody);
+    } else if (parsedBody && typeof parsedBody === "object") {
+      const obj = parsedBody as Record<string, unknown>;
+      const arr =
+        obj.articles ?? obj.items ?? obj.data ?? obj.results ?? obj.entries;
+      if (Array.isArray(arr)) {
+        incomingItems = toItems(arr);
+      } else {
+        incomingItems = [obj];
+      }
+    }
+
+    const transformed = incomingItems.map((item, idx) => toArticleInsert(item, idx));
+    const rowsToInsert = transformed
+      .map((t) => t.row)
+      .filter((row): row is Record<string, unknown> => row !== null);
+    const skippedCount = transformed.length - rowsToInsert.length;
+
+    if (rowsToInsert.length === 0) {
+      return NextResponse.json({
+        success: true,
+        received: parsedBody,
+        insertedCount: 0,
+        skippedCount,
+        message: "Inga giltiga artiklar att spara (okända fält ignoreras).",
+      });
     }
 
     const supabase = getStageClient();
-    const { data: inserted, error: insertError } = await supabase
-      .from("articles")
-      .insert({
-        title,
-        body,
-        slug,
-        excerpt: typeof payload.excerpt === "string" ? payload.excerpt : null,
-        image: typeof payload.image === "string" ? payload.image : "",
-        category:
-          typeof payload.category === "string" ? payload.category : "Övrigt",
-        read_time:
-          typeof payload.read_time === "string" ? payload.read_time : "1 min",
-        published_at:
-          typeof payload.published_at === "string"
-            ? payload.published_at
-            : null,
-        source: typeof payload.source === "string" ? payload.source : null,
-        external_id:
-          typeof payload.external_id === "string" ? payload.external_id : null,
-      })
-      .select("id,title,slug,created_at")
-      .single();
+    const inserted: Array<Record<string, unknown>> = [];
+    const failed: Array<{ slug: string; error: string }> = [];
 
-    if (insertError) {
-      console.error("Stage insert error:", insertError);
-      return NextResponse.json(
-        { error: insertError.message || "Kunde inte spara i stage DB" },
-        { status: 500 }
-      );
+    for (const row of rowsToInsert) {
+      let payload = { ...row } as Record<string, unknown>;
+      let didInsert = false;
+
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        const { data, error } = await supabase
+          .from("articles")
+          .insert(payload)
+          .select("id,title,slug,created_at")
+          .single();
+
+        if (!error) {
+          inserted.push(data as Record<string, unknown>);
+          didInsert = true;
+          break;
+        }
+
+        const isDuplicateSlug =
+          error.code === "23505" &&
+          String(error.message).includes("articles_slug_key");
+
+        if (isDuplicateSlug) {
+          const currentSlug =
+            typeof payload.slug === "string" ? payload.slug : slugify("artikel");
+          payload = {
+            ...payload,
+            slug: withSlugSuffix(currentSlug, attempt),
+          };
+          continue;
+        }
+
+        console.error("Stage insert error:", error);
+        failed.push({
+          slug: typeof payload.slug === "string" ? payload.slug : "unknown",
+          error: error.message || "Unknown insert error",
+        });
+        break;
+      }
+
+      if (!didInsert) {
+        const slug = typeof payload.slug === "string" ? payload.slug : "unknown";
+        if (!failed.some((f) => f.slug === slug)) {
+          failed.push({ slug, error: "Kunde inte spara efter retries" });
+        }
+      }
     }
 
     return NextResponse.json({
       success: true,
       received: parsedBody,
+      insertedCount: inserted.length,
+      skippedCount,
       inserted,
+      failedCount: failed.length,
+      failed,
     });
   } catch (error) {
     console.error("Make route error:", error);

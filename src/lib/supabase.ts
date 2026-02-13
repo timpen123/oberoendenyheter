@@ -3,9 +3,13 @@ import { createClient } from "@supabase/supabase-js";
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const stageUrl = process.env.STAGE__SUPABASE_URL;
+const stageServiceKey = process.env.STAGE__SUPABASE_SERVICE_ROLE_KEY;
 
 export function isSupabaseConfigured(): boolean {
-  return Boolean(url && serviceKey);
+  if (url && serviceKey) return true;
+  if (stageUrl && stageServiceKey) return true;
+  return false;
 }
 
 /** Server-side Supabase-klient med service role (för upload + CRUD). Använd endast i API-routes / Server Components. */
@@ -16,6 +20,28 @@ export function getSupabaseAdmin() {
   return createClient(url, serviceKey, {
     auth: { persistSession: false },
   });
+}
+
+/** Om sajten just nu läser från stage (true) eller main (false). */
+export function isSiteUsingStageSupabase(): boolean {
+  const v = (process.env.USE_STAGE_SUPABASE_FOR_SITE ?? "").trim().toLowerCase();
+  return (v === "true" || v === "1") && Boolean(stageUrl && stageServiceKey);
+}
+
+/**
+ * Klient för sajtens läsning (nyheter etc.).
+ * Använder stage om USE_STAGE_SUPABASE_FOR_SITE=true eller om endast stage är konfigurerat (inga main-vars).
+ */
+export function getSupabaseAdminForSite() {
+  const useStage =
+    (isSiteUsingStageSupabase() && stageUrl && stageServiceKey) ||
+    (!url && !serviceKey && stageUrl && stageServiceKey);
+  if (useStage && stageUrl && stageServiceKey) {
+    return createClient(stageUrl, stageServiceKey, {
+      auth: { persistSession: false },
+    });
+  }
+  return getSupabaseAdmin();
 }
 
 /** Klient med anon key (t.ex. för publikt läsande från Storage). Kan användas i browser om du vill. */

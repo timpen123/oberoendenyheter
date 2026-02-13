@@ -19,11 +19,12 @@ export function ImageWithFallback({
   sizes,
 }: ImageWithFallbackProps) {
   const [error, setError] = useState(false);
+  const noSrc = !src || !src.trim();
 
-  if (error) {
+  if (noSrc || error) {
     return (
       <div
-        className={`flex items-center justify-center bg-muted text-muted-foreground ${className ?? ""}`}
+        className={`flex min-h-[120px] items-center justify-center bg-muted text-muted-foreground ${className ?? ""}`}
         style={fill ? { position: "absolute", inset: 0 } : undefined}
       >
         <span className="text-sm">Bild saknas</span>

@@ -1,5 +1,5 @@
 import type { Article, ArticleInsert, ArticleListParams, ArticleListResult } from "./types";
-import { getSupabaseAdmin, getArticlesTableName } from "./supabase";
+import { getSupabaseAdmin, getSupabaseAdminForSite, getArticlesTableName } from "./supabase";
 
 function mapRow(row: Record<string, unknown>): Article {
   return {
@@ -21,7 +21,7 @@ function mapRow(row: Record<string, unknown>): Article {
 export async function getArticlesListFromSupabase(
   params: ArticleListParams = {}
 ): Promise<ArticleListResult> {
-  const supabase = getSupabaseAdmin();
+  const supabase = getSupabaseAdminForSite();
   const page = Math.max(1, params.page ?? 1);
   const limit = Math.min(100, Math.max(1, params.limit ?? 20));
   const from = (page - 1) * limit;
@@ -47,17 +47,37 @@ export async function getArticlesListFromSupabase(
 }
 
 export async function getArticleByIdFromSupabase(id: string): Promise<Article | null> {
-  const supabase = getSupabaseAdmin();
+  const supabase = getSupabaseAdminForSite();
   const { data, error } = await supabase.from(getArticlesTableName()).select("*").eq("id", id).single();
   if (error || !data) return null;
   return mapRow(data as Record<string, unknown>);
 }
 
 export async function getArticleBySlugFromSupabase(slug: string): Promise<Article | null> {
-  const supabase = getSupabaseAdmin();
+  const supabase = getSupabaseAdminForSite();
   const { data, error } = await supabase.from(getArticlesTableName()).select("*").eq("slug", slug).single();
   if (error || !data) return null;
   return mapRow(data as Record<string, unknown>);
+}
+
+export async function getArticlesByCategoryFromSupabase(
+  category: string,
+  excludeId?: string,
+  limit = 5
+): Promise<Article[]> {
+  const supabase = getSupabaseAdminForSite();
+  const table = getArticlesTableName();
+  let q = supabase
+    .from(table)
+    .select("id,title,slug,excerpt,body,image,category,read_time,published_at,created_at,source,external_id")
+    .eq("category", category)
+    .order("published_at", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (excludeId) q = q.neq("id", excludeId);
+  const { data, error } = await q;
+  if (error) return [];
+  return (data ?? []).map((row) => mapRow(row as Record<string, unknown>));
 }
 
 export async function insertArticleToSupabase(input: ArticleInsert): Promise<Article> {

@@ -1,6 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getArticleBySlug, getArticlesByCategory } from "@/lib/data";
+import {
+  getArticleBySlugFromSupabase,
+  getArticlesByCategoryFromSupabase,
+} from "@/lib/supabase-data";
+import { isSupabaseConfigured } from "@/lib/supabase";
 import { ArticleDetailContent } from "@/components/news/ArticleDetailContent";
 
 export default async function NyheterSlugPage({
@@ -9,13 +14,19 @@ export default async function NyheterSlugPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const article = getArticleBySlug(slug);
+
+  const useSupabase = isSupabaseConfigured();
+  const article = useSupabase
+    ? await getArticleBySlugFromSupabase(slug)
+    : getArticleBySlug(slug);
 
   if (!article) {
     notFound();
   }
 
-  const relatedArticles = getArticlesByCategory(article.category, article.id, 4);
+  const relatedArticles = useSupabase
+    ? await getArticlesByCategoryFromSupabase(article.category, article.id, 4)
+    : getArticlesByCategory(article.category, article.id, 4);
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL;
 
   return (
