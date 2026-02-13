@@ -25,12 +25,16 @@ export function getSupabaseAdmin() {
 /** Om sajten just nu läser från stage (true) eller main (false). */
 export function isSiteUsingStageSupabase(): boolean {
   const v = (process.env.USE_STAGE_SUPABASE_FOR_SITE ?? "").trim().toLowerCase();
-  return (v === "true" || v === "1") && Boolean(stageUrl && stageServiceKey);
+  if ((v === "true" || v === "1") && stageUrl && stageServiceKey) return true;
+  const vercelUrl = (process.env.VERCEL_URL ?? "").toLowerCase();
+  if ((vercelUrl.includes("stage") || vercelUrl.includes("preview")) && stageUrl && stageServiceKey)
+    return true;
+  return false;
 }
 
 /**
  * Klient för sajtens läsning (nyheter etc.).
- * Använder stage om USE_STAGE_SUPABASE_FOR_SITE=true eller om endast stage är konfigurerat (inga main-vars).
+ * Använder stage om USE_STAGE_SUPABASE_FOR_SITE=true, eller om Vercel-URL innehåller "stage"/"preview" (och stage-vars finns).
  */
 export function getSupabaseAdminForSite() {
   const useStage =
