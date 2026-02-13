@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import {
+  getSiteSupabaseDataSource,
   isSupabaseConfigured,
-  isSiteUsingStageSupabase,
   getSupabaseAdminForSite,
 } from "@/lib/supabase";
 import { getArticlesTableName } from "@/lib/supabase";
@@ -14,11 +14,11 @@ export async function GET() {
   const mainKey = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
   const useStageFlag = (process.env.USE_STAGE_SUPABASE_FOR_SITE ?? "").trim().toLowerCase();
 
-  const dataSource = isSiteUsingStageSupabase() ? "stage" : "main";
+  const dataSource = getSiteSupabaseDataSource();
   const supabaseConfigured = isSupabaseConfigured();
 
   let articleCount: number | null = null;
-  let tableName = getArticlesTableName();
+  const tableName = getArticlesTableName();
   let error: string | null = null;
 
   if (supabaseConfigured) {

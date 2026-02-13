@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { getArticles } from "@/lib/api/site";
+import { ApiError } from "@/lib/api/client";
 import type { ArticlesListParams, ArticlesResponse } from "@/lib/api/types";
 
 export interface UseArticlesResult {
@@ -27,7 +28,13 @@ export function useArticles(params: ArticlesListParams = {}): UseArticlesResult 
       const result = await getArticles(params);
       setData(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Kunde inte hämta nyheter");
+      if (err instanceof ApiError && err.status === 401) {
+        setError(
+          "Preview är skyddad (401). Stäng av Deployment Protection för Preview i Vercel, eller använd bypass-token i URL."
+        );
+      } else {
+        setError(err instanceof Error ? err.message : "Kunde inte hämta nyheter");
+      }
     } finally {
       setIsLoading(false);
     }

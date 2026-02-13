@@ -24,12 +24,38 @@ export function getSupabaseAdmin() {
 
 /** Om sajten just nu läser från stage (true) eller main (false). */
 export function isSiteUsingStageSupabase(): boolean {
-  const v = (process.env.USE_STAGE_SUPABASE_FOR_SITE ?? "").trim().toLowerCase();
-  if ((v === "true" || v === "1") && stageUrl && stageServiceKey) return true;
+  return getSiteSupabaseDataSource() === "stage";
+}
+
+export type SiteSupabaseDataSource = "stage" | "main";
+
+/**
+ * Avgör vilken datakälla site-läsning ska använda.
+ *
+ * Prioritet:
+ * 1) USE_STAGE_SUPABASE_FOR_SITE=true|1|stage => stage
+ * 2) USE_STAGE_SUPABASE_FOR_SITE=false|0|main => main
+ * 3) Om main saknas men stage finns => stage
+ * 4) Preview/stage URL på Vercel => stage
+ * 5) I lokal/dev-miljö med stage konfigurerat => stage
+ * 6) Annars => main
+ */
+export function getSiteSupabaseDataSource(): SiteSupabaseDataSource {
+  const hasStage = Boolean(stageUrl && stageServiceKey);
+  const hasMain = Boolean(url && serviceKey);
+
+  const raw = (process.env.USE_STAGE_SUPABASE_FOR_SITE ?? "").trim().toLowerCase();
+  if (hasStage && (raw === "true" || raw === "1" || raw === "stage")) return "stage";
+  if (raw === "false" || raw === "0" || raw === "main") return "main";
+
+  if (!hasMain && hasStage) return "stage";
+
   const vercelUrl = (process.env.VERCEL_URL ?? "").toLowerCase();
-  if ((vercelUrl.includes("stage") || vercelUrl.includes("preview")) && stageUrl && stageServiceKey)
-    return true;
-  return false;
+  if (hasStage && (vercelUrl.includes("stage") || vercelUrl.includes("preview"))) return "stage";
+
+  if (process.env.NODE_ENV !== "production" && hasStage) return "stage";
+
+  return "main";
 }
 
 /**
@@ -37,10 +63,8 @@ export function isSiteUsingStageSupabase(): boolean {
  * Använder stage om USE_STAGE_SUPABASE_FOR_SITE=true, eller om Vercel-URL innehåller "stage"/"preview" (och stage-vars finns).
  */
 export function getSupabaseAdminForSite() {
-  const useStage =
-    (isSiteUsingStageSupabase() && stageUrl && stageServiceKey) ||
-    (!url && !serviceKey && stageUrl && stageServiceKey);
-  if (useStage && stageUrl && stageServiceKey) {
+  const source = getSiteSupabaseDataSource();
+  if (source === "stage" && stageUrl && stageServiceKey) {
     return createClient(stageUrl, stageServiceKey, {
       auth: { persistSession: false },
     });
