@@ -60,6 +60,26 @@ export async function getArticleBySlugFromSupabase(slug: string): Promise<Articl
   return mapRow(data as Record<string, unknown>);
 }
 
+export async function getArticlesByCategoryFromSupabase(
+  category: string,
+  excludeId?: string,
+  limit = 5
+): Promise<Article[]> {
+  const supabase = getSupabaseAdminForSite();
+  const table = getArticlesTableName();
+  let q = supabase
+    .from(table)
+    .select("id,title,slug,excerpt,body,image,category,read_time,published_at,created_at,source,external_id")
+    .eq("category", category)
+    .order("published_at", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (excludeId) q = q.neq("id", excludeId);
+  const { data, error } = await q;
+  if (error) return [];
+  return (data ?? []).map((row) => mapRow(row as Record<string, unknown>));
+}
+
 export async function insertArticleToSupabase(input: ArticleInsert): Promise<Article> {
   const supabase = getSupabaseAdmin();
   const slug = input.slug ?? input.title.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");

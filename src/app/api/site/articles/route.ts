@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getArticlesList } from "@/lib/data";
-import { isSupabaseConfigured } from "@/lib/supabase";
+import { isSupabaseConfigured, isSiteUsingStageSupabase } from "@/lib/supabase";
 import { getArticlesListFromSupabase } from "@/lib/supabase-data";
 
 /** GET – lista artiklar (paginering). Endast publikt/läsning. */
@@ -10,10 +10,14 @@ export async function GET(request: Request) {
     const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") ?? "20", 10) || 20));
 
-    
     if (isSupabaseConfigured()) {
       const result = await getArticlesListFromSupabase({ page, limit });
-      return NextResponse.json(result);
+      const headers = new Headers();
+      headers.set(
+        "X-Data-Source",
+        isSiteUsingStageSupabase() ? "stage" : "main"
+      );
+      return NextResponse.json(result, { headers });
     }
     const result = getArticlesList({ page, limit });
     return NextResponse.json(result);

@@ -8,12 +8,7 @@ const stageServiceKey = process.env.STAGE__SUPABASE_SERVICE_ROLE_KEY;
 
 export function isSupabaseConfigured(): boolean {
   if (url && serviceKey) return true;
-  if (
-    process.env.USE_STAGE_SUPABASE_FOR_SITE === "true" &&
-    stageUrl &&
-    stageServiceKey
-  )
-    return true;
+  if (isSiteUsingStageSupabase()) return true;
   return false;
 }
 
@@ -27,14 +22,18 @@ export function getSupabaseAdmin() {
   });
 }
 
+/** Om sajten just nu läser från stage (true) eller main (false). */
+export function isSiteUsingStageSupabase(): boolean {
+  const v = (process.env.USE_STAGE_SUPABASE_FOR_SITE ?? "").trim().toLowerCase();
+  return (v === "true" || v === "1") && Boolean(stageUrl && stageServiceKey);
+}
+
 /**
  * Klient för sajtens läsning (nyheter etc.). På preview kan du sätta
  * USE_STAGE_SUPABASE_FOR_SITE=true så läser sajten från stage-DB (samma som Make skriver till).
  */
 export function getSupabaseAdminForSite() {
-  const useStage =
-    process.env.USE_STAGE_SUPABASE_FOR_SITE === "true" && stageUrl && stageServiceKey;
-  if (useStage) {
+  if (isSiteUsingStageSupabase() && stageUrl && stageServiceKey) {
     return createClient(stageUrl, stageServiceKey, {
       auth: { persistSession: false },
     });
