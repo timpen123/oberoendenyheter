@@ -33,27 +33,17 @@ export type SiteSupabaseDataSource = "stage" | "main";
  * Avgör vilken datakälla site-läsning ska använda.
  *
  * Prioritet:
- * 1) USE_STAGE_SUPABASE_FOR_SITE=true|1|stage => stage
- * 2) USE_STAGE_SUPABASE_FOR_SITE=false|0|main => main
- * 3) Om main saknas men stage finns => stage
- * 4) Preview/stage URL på Vercel => stage
- * 5) I lokal/dev-miljö med stage konfigurerat => stage
- * 6) Annars => main
+ * 1) USE_STAGE_SUPABASE_FOR_SITE=false|0|main => main (explicit override)
+ * 2) Om stage är konfigurerad => stage (default)
+ * 3) Annars main
  */
 export function getSiteSupabaseDataSource(): SiteSupabaseDataSource {
   const hasStage = Boolean(stageUrl && stageServiceKey);
-  const hasMain = Boolean(url && serviceKey);
-
   const raw = (process.env.USE_STAGE_SUPABASE_FOR_SITE ?? "").trim().toLowerCase();
-  if (hasStage && (raw === "true" || raw === "1" || raw === "stage")) return "stage";
   if (raw === "false" || raw === "0" || raw === "main") return "main";
+  if (hasStage && (raw === "true" || raw === "1" || raw === "stage")) return "stage";
 
-  if (!hasMain && hasStage) return "stage";
-
-  const vercelUrl = (process.env.VERCEL_URL ?? "").toLowerCase();
-  if (hasStage && (vercelUrl.includes("stage") || vercelUrl.includes("preview"))) return "stage";
-
-  if (process.env.NODE_ENV !== "production" && hasStage) return "stage";
+  if (hasStage) return "stage";
 
   return "main";
 }

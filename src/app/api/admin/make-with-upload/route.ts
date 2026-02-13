@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { getArticlesTableName } from "@/lib/supabase";
 
 const BUCKET = "article-images";
 const MAX_SIZE_MB = 4;
@@ -114,8 +115,9 @@ export async function POST(request: Request) {
     };
 
     const supabase = getStageClient();
+    const table = getArticlesTableName();
     const { data: inserted, error } = await supabase
-      .from("articles")
+      .from(table)
       .insert(row)
       .select("id,title,slug,image,created_at")
       .single();
@@ -124,7 +126,7 @@ export async function POST(request: Request) {
       if (error.code === "23505" && String(error.message).includes("slug")) {
         const retrySlug = `${slug}-${Date.now()}`;
         const { data: retryData, error: retryError } = await supabase
-          .from("articles")
+          .from(table)
           .insert({ ...row, slug: retrySlug })
           .select("id,title,slug,image,created_at")
           .single();
