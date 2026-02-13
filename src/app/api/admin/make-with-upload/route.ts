@@ -36,6 +36,20 @@ function getFormString(form: FormData, key: string): string {
   return typeof v === "string" ? v.trim() : "";
 }
 
+function makeTitleFromBody(input: string, maxLen = 90): string {
+  const plain = input.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  if (!plain) return "";
+  const sentenceEnd = plain.search(/[.!?]\s/);
+  const firstSentence =
+    sentenceEnd > 20 && sentenceEnd < maxLen ? plain.slice(0, sentenceEnd + 1) : plain.slice(0, maxLen);
+  return firstSentence.trim();
+}
+
+function looksLikeJsonObject(input: string): boolean {
+  const s = input.trim();
+  return s.startsWith("{") && s.endsWith("}");
+}
+
 type CombinedPayload = {
   title?: string;
   body?: string;
@@ -111,17 +125,34 @@ export async function POST(request: Request) {
     let body = getFormString(formData, "body");
 
     let parsedCombined: CombinedPayload | null = null;
-    if (!title || !body) {
+
+    // Om body är JSON-sträng med {title, body, ...} ska vi alltid normalisera den,
+    // även om title redan skickats separat.
+    if (body && looksLikeJsonObject(body)) {
       parsedCombined = parseCombinedBodyField(body);
       if (!title) title = parsedCombined?.title ?? "";
-      if (!body || body === title) body = parsedCombined?.body ?? body;
+      if (parsedCombined?.body) body = parsedCombined.body;
+    } else if (!title || !body) {
+      parsedCombined = parseCombinedBodyField(body);
+      if (!title) title = parsedCombined?.title ?? "";
+      if (parsedCombined?.body) {
+        const rawLooksLikeJson = body.trim().startsWith("{") || body.trim().startsWith("[");
+        if (!body || body === title || rawLooksLikeJson) {
+          body = parsedCombined.body;
+        }
+      }
     }
 
-    if (!title || !body) {
+    // Make-flöde med bara key=body: generera titel automatiskt från innehållet.
+    if (!title && body) {
+      title = makeTitleFromBody(body) || `Artikel ${Date.now()}`;
+    }
+
+    if (!body) {
       return NextResponse.json(
         {
           error:
-            "title och body krävs. Antingen separata fält, eller key=body med JSON ({title,body,...}) alternativt första raden=titel och resten=body.",
+            "body krävs. Skicka key=body med text eller JSON ({title,body,...}). title kan utelämnas och genereras då automatiskt.",
         },
         { status: 400 }
       );
@@ -159,8 +190,17 @@ export async function POST(request: Request) {
       imageUrl = urlData.publicUrl;
     }
 
-    const excerpt =
-      getFormString(formData, "excerpt") || parsedCombined?.excerpt || excerptFromBody(body);
+    let excerptInput = getFormString(formData, "excerpt");
+    if (excerptInput && looksLikeJsonObject(excerptInput)) {
+      const parsedExcerpt = parseCombinedBodyField(excerptInput);
+      if (parsedExcerpt?.excerpt) {
+        excerptInput = parsedExcerpt.excerpt;
+      } else if (parsedExcerpt?.body) {
+        excerptInput = excerptFromBody(parsedExcerpt.body);
+      }
+    }
+
+    const excerpt = excerptInput || parsedCombined?.excerpt || excerptFromBody(body);
     const category = getFormString(formData, "category") || parsedCombined?.category || "Övrigt";
     const slug = slugify(title) || `artikel-${Date.now()}`;
 
