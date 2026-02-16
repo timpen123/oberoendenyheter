@@ -1,5 +1,14 @@
+import { getAdminSupabaseDataSource } from "@/lib/supabase";
+
+function getExpectedIngestKey(): string {
+  const mainKey = (process.env.ADMIN_INGEST_KEY ?? "").trim();
+  const stageKey = (process.env.ADMIN_INGEST_KEY_STAGE ?? "").trim();
+  if (getAdminSupabaseDataSource() === "stage" && stageKey) return stageKey;
+  return mainKey || stageKey;
+}
+
 export function isAdminIngestAuthorized(request: Request): boolean {
-  const configuredKey = (process.env.ADMIN_INGEST_KEY ?? "").trim();
+  const configuredKey = getExpectedIngestKey();
   if (!configuredKey) return false;
 
   const headerKey = (request.headers.get("x-admin-ingest-key") ?? "").trim();
