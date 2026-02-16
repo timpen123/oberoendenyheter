@@ -1,19 +1,12 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabaseAdminForAdmin } from "@/lib/supabase";
 
 const BUCKET = "article-images";
 /** Håll under Vercels hårda gräns 4,5 MB – annars 413 innan request når denna route. */
 const MAX_SIZE_MB = 4;
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 
-function getStageClient() {
-  const url = process.env.STAGE__SUPABASE_URL;
-  const key = process.env.STAGE__SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error("Stage env saknas: STAGE__SUPABASE_URL och STAGE__SUPABASE_SERVICE_ROLE_KEY");
-  return createClient(url, key, { auth: { persistSession: false } });
-}
-
-/** POST – ladda upp bild till stage Storage. Tar emot vilket form-fält som helst som innehåller en fil (Make skickar t.ex. hela bundle från Get a file). */
+/** POST – ladda upp bild till vald admin-Storage. Tar emot vilket form-fält som helst som innehåller en fil (Make skickar t.ex. hela bundle från Get a file). */
 export async function POST(request: Request) {
   try {
     const contentLength = request.headers.get("content-length");
@@ -56,7 +49,7 @@ export async function POST(request: Request) {
     const safeExt = ["jpeg", "jpg", "png", "webp", "gif"].includes(ext) ? ext : "jpg";
     const path = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${safeExt}`;
 
-    const supabase = getStageClient();
+    const supabase = getSupabaseAdminForAdmin();
     const { data, error } = await supabase.storage
       .from(BUCKET)
       .upload(path, file, { cacheControl: "3600", upsert: false });
@@ -69,9 +62,12 @@ export async function POST(request: Request) {
     const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(data.path);
     return NextResponse.json({ url: urlData.publicUrl, path: data.path });
   } catch (e) {
-    if (String(e).includes("Stage env saknas")) {
+    if (String(e).includes("Supabase")) {
       return NextResponse.json(
-        { error: "Supabase stage är inte konfigurerat (STAGE__SUPABASE_*)" },
+        {
+          error:
+            "Supabase admin är inte konfigurerat. Sätt NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY, eller stage-variabler och USE_STAGE_SUPABASE_FOR_ADMIN=true.",
+        },
         { status: 503 }
       );
     }
