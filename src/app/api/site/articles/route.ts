@@ -1,0 +1,30 @@
+import { NextResponse } from "next/server";
+import { getArticlesList } from "@/lib/data";
+import { getSiteSupabaseDataSource, isSupabaseConfigured } from "@/lib/supabase";
+import { getArticlesListFromSupabase } from "@/lib/supabase-data";
+
+export async function GET(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") ?? "20", 10) || 20));
+
+    if (isSupabaseConfigured()) {
+      const result = await getArticlesListFromSupabase({ page, limit });
+      const dataSource = getSiteSupabaseDataSource();
+      const headers = new Headers();
+      headers.set("X-Data-Source", dataSource);
+      headers.set("Cache-Control", "no-store, max-age=0");
+      return NextResponse.json(
+        { ...result, _meta: { dataSource, total: result.total } },
+        { headers }
+      );
+    }
+
+    const result = getArticlesList({ page, limit });
+    return NextResponse.json(result);
+  } catch (err) {
+    console.error("[GET /api/site/articles]", err);
+    return NextResponse.json({ error: "Kunde inte hämta artiklar" }, { status: 500 });
+  }
+}
