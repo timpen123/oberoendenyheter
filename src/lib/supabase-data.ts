@@ -1,5 +1,6 @@
 import type { Article, ArticleInsert, ArticleListParams, ArticleListResult } from "./types";
 import { getSupabaseAdmin, getSupabaseAdminForSite, getArticlesTableName } from "./supabase";
+import { estimateReadTime } from "./readingTime";
 
 function mapRow(row: Record<string, unknown>): Article {
   return {
@@ -10,7 +11,7 @@ function mapRow(row: Record<string, unknown>): Article {
     body: String(row.body),
     image: row.image != null ? String(row.image) : "",
     category: row.category != null ? String(row.category) : "Övrigt",
-    readTime: row.read_time != null ? String(row.read_time) : "1 min",
+    readTime: row.read_time != null ? String(row.read_time) : estimateReadTime(String(row.body)),
     published_at: row.published_at != null ? String(row.published_at) : null,
     created_at: String(row.created_at),
     source: row.source != null ? String(row.source) : null,
@@ -92,7 +93,7 @@ export async function insertArticleToSupabase(input: ArticleInsert): Promise<Art
       body: input.body,
       image: input.image ?? "",
       category: input.category ?? "Övrigt",
-      read_time: input.read_time ?? "1 min",
+      read_time: input.read_time ?? estimateReadTime(input.body),
       published_at: input.published_at ?? null,
       source: input.source ?? null,
       external_id: input.external_id ?? null,
