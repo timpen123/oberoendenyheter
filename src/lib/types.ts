@@ -11,8 +11,10 @@ export interface Article {
   image: string;
   category: string;
   readTime: string;
+  status: "draft" | "published";
   published_at: string | null;
   created_at: string;
+  updated_at?: string | null;
   source: string | null;
   external_id: string | null;
 }
@@ -28,6 +30,7 @@ export interface ArticleInsert {
   image?: string;
   category?: string;
   read_time?: string;
+  status?: "draft" | "published";
   published_at?: string | null;
   source?: string | null;
   external_id?: string | null;

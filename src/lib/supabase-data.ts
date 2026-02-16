@@ -1,8 +1,16 @@
 import type { Article, ArticleInsert, ArticleListParams, ArticleListResult } from "./types";
-import { getSupabaseAdmin, getSupabaseAdminForSite, getArticlesTableName } from "./supabase";
+import {
+  getSupabaseAdminForAdmin,
+  getSupabaseAdminForSite,
+  getArticlesTableName,
+} from "./supabase";
 import { estimateReadTime } from "./readingTime";
 
 function mapRow(row: Record<string, unknown>): Article {
+  const publishedAt = row.published_at != null ? String(row.published_at) : null;
+  const statusRaw = row.status != null ? String(row.status) : "";
+  const status: "draft" | "published" =
+    statusRaw === "draft" ? "draft" : publishedAt ? "published" : "draft";
   return {
     id: String(row.id),
     title: String(row.title),
@@ -12,8 +20,15 @@ function mapRow(row: Record<string, unknown>): Article {
     image: row.image != null ? String(row.image) : "",
     category: row.category != null ? String(row.category) : "Övrigt",
     readTime: row.read_time != null ? String(row.read_time) : estimateReadTime(String(row.body)),
-    published_at: row.published_at != null ? String(row.published_at) : null,
+    status,
+    published_at: publishedAt,
     created_at: String(row.created_at),
+    updated_at:
+      row.updated_at != null
+        ? String(row.updated_at)
+        : row.created_at != null
+          ? String(row.created_at)
+          : null,
     source: row.source != null ? String(row.source) : null,
     external_id: row.external_id != null ? String(row.external_id) : null,
   };
@@ -29,16 +44,83 @@ export async function getArticlesListFromSupabase(
   const to = from + limit - 1;
 
   const table = getArticlesTableName();
-  const { data: articles, error, count } = await supabase
+  const publishedQuery = supabase
     .from(table)
-    .select("id,title,slug,excerpt,body,image,category,read_time,published_at,created_at,source,external_id", { count: "exact" })
+    .select(
+      "id,title,slug,excerpt,body,image,category,read_time,status,published_at,created_at,updated_at,source,external_id",
+      { count: "exact" }
+    )
+    .eq("status", "published")
     .order("published_at", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false })
     .range(from, to);
 
-  if (error) throw error;
+  const publishedResult = await publishedQuery;
+  if (!publishedResult.error) {
+    const list = (publishedResult.data ?? []).map((row) => mapRow(row as Record<string, unknown>));
+    return {
+      articles: list,
+      total: publishedResult.count ?? list.length,
+      page,
+      limit,
+    };
+  }
 
-  const list = (articles ?? []).map((row) => mapRow(row as Record<string, unknown>));
+  const fallback = await supabase
+    .from(table)
+    .select("id,title,slug,excerpt,body,image,category,read_time,published_at,created_at,updated_at,source,external_id")
+    .order("published_at", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false })
+    .range(from, to);
+  if (fallback.error) throw fallback.error;
+  const fallbackList = (fallback.data ?? []).map((row) => mapRow(row as Record<string, unknown>));
+  return {
+    articles: fallbackList,
+    total: fallbackList.length,
+    page,
+    limit,
+  };
+}
+
+export async function getAdminArticlesListFromSupabase(
+  params: ArticleListParams = {}
+): Promise<ArticleListResult> {
+  const supabase = getSupabaseAdminForAdmin();
+  const page = Math.max(1, params.page ?? 1);
+  const limit = Math.min(100, Math.max(1, params.limit ?? 20));
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
+  const table = getArticlesTableName();
+
+  const { data, error, count } = await supabase
+    .from(table)
+    .select(
+      "id,title,slug,excerpt,body,image,category,read_time,status,published_at,created_at,source,external_id",
+      { count: "exact" }
+    )
+    .order("created_at", { ascending: false })
+    .range(from, to);
+
+  if (error) {
+    const fallback = await supabase
+      .from(table)
+      .select("id,title,slug,excerpt,body,image,category,read_time,published_at,created_at,updated_at,source,external_id", {
+        count: "exact",
+      })
+      .order("created_at", { ascending: false })
+      .range(from, to);
+    if (fallback.error) throw fallback.error;
+
+    const fallbackList = (fallback.data ?? []).map((row) => mapRow(row as Record<string, unknown>));
+    return {
+      articles: fallbackList,
+      total: fallback.count ?? fallbackList.length,
+      page,
+      limit,
+    };
+  }
+
+  const list = (data ?? []).map((row) => mapRow(row as Record<string, unknown>));
   return {
     articles: list,
     total: count ?? list.length,
@@ -48,7 +130,7 @@ export async function getArticlesListFromSupabase(
 }
 
 export async function getArticleByIdFromSupabase(id: string): Promise<Article | null> {
-  const supabase = getSupabaseAdminForSite();
+  const supabase = getSupabaseAdminForAdmin();
   const { data, error } = await supabase.from(getArticlesTableName()).select("*").eq("id", id).single();
   if (error || !data) return null;
   return mapRow(data as Record<string, unknown>);
@@ -58,7 +140,8 @@ export async function getArticleBySlugFromSupabase(slug: string): Promise<Articl
   const supabase = getSupabaseAdminForSite();
   const { data, error } = await supabase.from(getArticlesTableName()).select("*").eq("slug", slug).single();
   if (error || !data) return null;
-  return mapRow(data as Record<string, unknown>);
+  const article = mapRow(data as Record<string, unknown>);
+  return article.status === "published" ? article : null;
 }
 
 export async function getArticlesByCategoryFromSupabase(
@@ -70,7 +153,7 @@ export async function getArticlesByCategoryFromSupabase(
   const table = getArticlesTableName();
   let q = supabase
     .from(table)
-    .select("id,title,slug,excerpt,body,image,category,read_time,published_at,created_at,source,external_id")
+    .select("id,title,slug,excerpt,body,image,category,read_time,status,published_at,created_at,updated_at,source,external_id")
     .eq("category", category)
     .order("published_at", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false })
@@ -78,11 +161,13 @@ export async function getArticlesByCategoryFromSupabase(
   if (excludeId) q = q.neq("id", excludeId);
   const { data, error } = await q;
   if (error) return [];
-  return (data ?? []).map((row) => mapRow(row as Record<string, unknown>));
+  return (data ?? [])
+    .map((row) => mapRow(row as Record<string, unknown>))
+    .filter((a) => a.status === "published");
 }
 
 export async function insertArticleToSupabase(input: ArticleInsert): Promise<Article> {
-  const supabase = getSupabaseAdmin();
+  const supabase = getSupabaseAdminForAdmin();
   const slug = input.slug ?? input.title.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
   const { data, error } = await supabase
     .from(getArticlesTableName())
@@ -94,7 +179,10 @@ export async function insertArticleToSupabase(input: ArticleInsert): Promise<Art
       image: input.image ?? "",
       category: input.category ?? "Övrigt",
       read_time: input.read_time ?? estimateReadTime(input.body),
-      published_at: input.published_at ?? null,
+      status: input.status ?? "draft",
+      published_at:
+        input.published_at ??
+        (input.status === "published" ? new Date().toISOString() : null),
       source: input.source ?? null,
       external_id: input.external_id ?? null,
     })
@@ -106,7 +194,7 @@ export async function insertArticleToSupabase(input: ArticleInsert): Promise<Art
 }
 
 export async function updateArticleInSupabase(id: string, input: Partial<ArticleInsert>): Promise<Article | null> {
-  const supabase = getSupabaseAdmin();
+  const supabase = getSupabaseAdminForAdmin();
   const payload: Record<string, unknown> = {};
   if (input.title != null) payload.title = input.title;
   if (input.slug != null) payload.slug = input.slug;
@@ -115,7 +203,14 @@ export async function updateArticleInSupabase(id: string, input: Partial<Article
   if (input.image !== undefined) payload.image = input.image;
   if (input.category !== undefined) payload.category = input.category;
   if (input.read_time !== undefined) payload.read_time = input.read_time;
+  if (input.status !== undefined) payload.status = input.status;
   if (input.published_at !== undefined) payload.published_at = input.published_at;
+  if (input.status === "published" && input.published_at === undefined) {
+    payload.published_at = new Date().toISOString();
+  }
+  if (input.status === "draft" && input.published_at === undefined) {
+    payload.published_at = null;
+  }
   if (input.source !== undefined) payload.source = input.source;
   if (input.external_id !== undefined) payload.external_id = input.external_id;
 
@@ -125,7 +220,7 @@ export async function updateArticleInSupabase(id: string, input: Partial<Article
 }
 
 export async function deleteArticleFromSupabase(id: string): Promise<boolean> {
-  const supabase = getSupabaseAdmin();
+  const supabase = getSupabaseAdminForAdmin();
   const { error } = await supabase.from(getArticlesTableName()).delete().eq("id", id);
   return !error;
 }

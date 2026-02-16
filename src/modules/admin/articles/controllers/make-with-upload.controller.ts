@@ -7,6 +7,7 @@ import {
 } from "@/modules/admin/articles/infrastructure/admin-articles.repository";
 import {
   getFirstFormFile,
+  getFormString,
   parseArticleFromMultipart,
 } from "@/modules/admin/articles/services/multipart-article-parser.service";
 import { isAdminIngestAuthorized } from "@/modules/admin/articles/utils/admin-auth";
@@ -49,7 +50,30 @@ export async function postMakeWithUpload(request: Request) {
       imageUrl = upload.publicUrl;
     }
 
-    const row = { ...parsed.row, image: imageUrl };
+    const explicitStatusFromField = getFormString(formData, "status");
+    const explicitStatusFromPayload = parsed.parsedCombined?.status;
+    const explicitStatus =
+      explicitStatusFromField === "draft" ||
+      explicitStatusFromField === "published" ||
+      explicitStatusFromPayload === "draft" ||
+      explicitStatusFromPayload === "published";
+
+    const hasImage = Boolean(imageUrl);
+    const derivedStatus: "draft" | "published" = explicitStatus
+      ? parsed.row.status
+      : hasImage
+        ? "published"
+        : "draft";
+
+    const row = {
+      ...parsed.row,
+      image: imageUrl,
+      status: derivedStatus,
+      published_at:
+        derivedStatus === "published"
+          ? parsed.row.published_at ?? new Date().toISOString()
+          : null,
+    };
     const inserted = await insertArticleWithRetry(row);
     if (inserted.error || !inserted.data) {
       return NextResponse.json(
