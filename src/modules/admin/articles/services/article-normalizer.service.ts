@@ -15,6 +15,7 @@ export interface ArticleInsertRow {
   image: string;
   category: string;
   read_time: string;
+  status: "draft" | "published";
   published_at: string | null;
   source: string | null;
   external_id: string | null;
@@ -28,6 +29,7 @@ export interface CombinedPayload {
   read_time?: string;
   source?: string;
   external_id?: string;
+  status?: "draft" | "published";
 }
 
 function normalizePayload(payload: Record<string, unknown>): Record<string, unknown> {
@@ -85,6 +87,10 @@ export function toArticleInsertRow(
         : typeof normalized.readTime === "string"
           ? normalized.readTime
           : estimateReadTime(body),
+    status:
+      normalized.status === "published" || normalized.status === "draft"
+        ? normalized.status
+        : "published",
     published_at: typeof normalized.published_at === "string" ? normalized.published_at : null,
     source: typeof normalized.source === "string" ? normalized.source : null,
     external_id: typeof normalized.external_id === "string" ? normalized.external_id : null,
@@ -100,6 +106,7 @@ export function toArticleInsertRowFromFields(input: {
   read_time?: string;
   source?: string;
   external_id?: string;
+  status?: "draft" | "published";
 }): ArticleInsertRow {
   const title = input.title.trim();
   const body = input.body.trim();
@@ -111,7 +118,8 @@ export function toArticleInsertRowFromFields(input: {
     image: (input.image ?? "").trim(),
     category: (input.category ?? "").trim() || DEFAULT_CATEGORY,
     read_time: (input.read_time ?? "").trim() || estimateReadTime(body),
-    published_at: null,
+    status: input.status ?? "published",
+    published_at: input.status === "draft" ? null : new Date().toISOString(),
     source: (input.source ?? "").trim() || null,
     external_id: (input.external_id ?? "").trim() || null,
   };

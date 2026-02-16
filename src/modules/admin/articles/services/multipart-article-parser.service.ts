@@ -64,6 +64,10 @@ export function parseArticleFromMultipart(formData: FormData): {
     read_time: getFormString(formData, "read_time") || parsedCombined?.read_time,
     source: getFormString(formData, "source") || parsedCombined?.source,
     external_id: getFormString(formData, "external_id") || parsedCombined?.external_id,
+    status:
+      getFormString(formData, "status") === "draft" || getFormString(formData, "status") === "published"
+        ? (getFormString(formData, "status") as "draft" | "published")
+        : parsedCombined?.status,
   });
 
   return { row, parsedCombined };

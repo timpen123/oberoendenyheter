@@ -1,17 +1,21 @@
 import { NextResponse } from "next/server";
 import { getArticlesList } from "@/lib/data";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import { getArticlesListFromSupabase, insertArticleToSupabase } from "@/lib/supabase-data";
+import { getAdminArticlesListFromSupabase, insertArticleToSupabase } from "@/lib/supabase-data";
 import type { ArticleInsert } from "@/lib/types";
+import { requireAdminUser } from "@/modules/admin/articles/utils/require-admin-user";
 
 export async function GET(request: Request) {
+  const admin = await requireAdminUser(request);
+  if (!admin.ok) return admin.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") ?? "20", 10) || 20));
 
     if (isSupabaseConfigured()) {
-      const result = await getArticlesListFromSupabase({ page, limit });
+      const result = await getAdminArticlesListFromSupabase({ page, limit });
       return NextResponse.json(result);
     }
 
@@ -24,6 +28,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const admin = await requireAdminUser(request);
+  if (!admin.ok) return admin.response;
+
   if (!isSupabaseConfigured()) {
     return NextResponse.json(
       {
@@ -38,8 +45,9 @@ export async function POST(request: Request) {
     if (!body?.title?.trim() || !body?.body?.trim()) {
       return NextResponse.json({ error: "title och body krävs" }, { status: 400 });
     }
+    const status = body.status ?? "draft";
     const article = await insertArticleToSupabase(body);
-    return NextResponse.json(article, { status: 201 });
+    return NextResponse.json({ ...article, status }, { status: 201 });
   } catch (err) {
     console.error("[POST /api/admin/articles]", err);
     return NextResponse.json({ error: "Kunde inte skapa artikel" }, { status: 500 });

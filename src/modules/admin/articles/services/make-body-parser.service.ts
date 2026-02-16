@@ -18,6 +18,7 @@ export function parseCombinedBodyField(input: string): CombinedPayload | null {
           read_time: typeof obj.read_time === "string" ? obj.read_time.trim() : undefined,
           source: typeof obj.source === "string" ? obj.source.trim() : undefined,
           external_id: typeof obj.external_id === "string" ? obj.external_id.trim() : undefined,
+          status: obj.status === "draft" || obj.status === "published" ? obj.status : undefined,
         };
       }
     } catch {
