@@ -1,21 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-import { getArticlesTableName } from "@/lib/supabase";
-
-function getStageClient() {
-  const url = process.env.STAGE__SUPABASE_URL;
-  const serviceRoleKey = process.env.STAGE__SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!url || !serviceRoleKey) {
-    throw new Error(
-      "Stage env saknas: STAGE__SUPABASE_URL och STAGE__SUPABASE_SERVICE_ROLE_KEY"
-    );
-  }
-
-  return createClient(url, serviceRoleKey, {
-    auth: { persistSession: false },
-  });
-}
+import { getAdminSupabaseDataSource, getArticlesTableName, getSupabaseAdminForAdmin } from "@/lib/supabase";
 
 function slugify(input: string): string {
   return input
@@ -138,10 +122,11 @@ function toArticleInsert(
   };
 }
 
-/** GET – snabb kontroll för att läsa data från stage articles. */
+/** GET – snabb kontroll för att läsa data från vald admin-datakälla. */
 export async function GET() {
   try {
-    const supabase = getStageClient();
+    const supabase = getSupabaseAdminForAdmin();
+    const dataSource = getAdminSupabaseDataSource();
     const table = getArticlesTableName();
     const { data, error } = await supabase
       .from(table)
@@ -150,21 +135,21 @@ export async function GET() {
       .limit(20);
 
     if (error) {
-      console.error("Stage read error:", error);
+      console.error(`[make][${dataSource}] read error:`, error);
       return NextResponse.json(
-        { error: error.message || "Kunde inte läsa från stage DB" },
+        { error: error.message || "Kunde inte läsa från vald databas", dataSource },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({ success: true, count: data?.length ?? 0, data });
+    return NextResponse.json({ success: true, dataSource, count: data?.length ?? 0, data });
   } catch (error) {
     console.error("Make GET error:", error);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }
 
-/** POST – tar emot data från Make och sparar i stage articles. */
+/** POST – tar emot data från Make och sparar i vald admin-datakälla. */
 export async function POST(req: Request) {
   try {
     const rawBody = await req.text();
@@ -233,7 +218,8 @@ export async function POST(req: Request) {
       });
     }
 
-    const supabase = getStageClient();
+    const supabase = getSupabaseAdminForAdmin();
+    const dataSource = getAdminSupabaseDataSource();
     const table = getArticlesTableName();
     const inserted: Array<Record<string, unknown>> = [];
     const failed: Array<{ slug: string; error: string }> = [];
@@ -269,7 +255,7 @@ export async function POST(req: Request) {
           continue;
         }
 
-        console.error("Stage insert error:", error);
+        console.error(`[make][${dataSource}] insert error:`, error);
         failed.push({
           slug: typeof payload.slug === "string" ? payload.slug : "unknown",
           error: error.message || "Unknown insert error",
@@ -293,6 +279,7 @@ export async function POST(req: Request) {
       inserted,
       failedCount: failed.length,
       failed,
+      dataSource,
     });
   } catch (error) {
     console.error("Make route error:", error);
