@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 
 type CookieConsent = {
   necessary: true;
@@ -26,9 +26,7 @@ function saveConsent(value: CookieConsent) {
   writeConsentCookie(value);
 }
 
-function getInitialConsent(): CookieConsent | null {
-  if (typeof window === "undefined") return null;
-  const raw = localStorage.getItem(STORAGE_KEY);
+function parseConsent(raw: string | null): CookieConsent | null {
   if (!raw) return null;
   try {
     return JSON.parse(raw) as CookieConsent;
@@ -37,11 +35,32 @@ function getInitialConsent(): CookieConsent | null {
   }
 }
 
+function subscribeConsent(onStoreChange: () => void) {
+  if (typeof window === "undefined") return () => {};
+  const handler = () => onStoreChange();
+  window.addEventListener("storage", handler);
+  return () => window.removeEventListener("storage", handler);
+}
+
+function getConsentSnapshot(): string | null {
+  return localStorage.getItem(STORAGE_KEY);
+}
+
+function getConsentServerSnapshot(): string | null {
+  return null;
+}
+
 export function CookieConsentPopup() {
-  const initialConsent = getInitialConsent();
-  const [visible, setVisible] = useState(initialConsent === null);
-  const [analytics, setAnalytics] = useState(Boolean(initialConsent?.analytics));
-  const [marketing, setMarketing] = useState(Boolean(initialConsent?.marketing));
+  const consentRaw = useSyncExternalStore(
+    subscribeConsent,
+    getConsentSnapshot,
+    getConsentServerSnapshot
+  );
+  const consent = parseConsent(consentRaw);
+  const [dismissed, setDismissed] = useState(false);
+  const [analytics, setAnalytics] = useState(false);
+  const [marketing, setMarketing] = useState(false);
+  const visible = !dismissed && consent === null;
 
   const saveAndClose = (nextAnalytics: boolean, nextMarketing: boolean) => {
     saveConsent({
@@ -51,9 +70,7 @@ export function CookieConsentPopup() {
       updatedAt: new Date().toISOString(),
       version: 1,
     });
-    setAnalytics(nextAnalytics);
-    setMarketing(nextMarketing);
-    setVisible(false);
+    setDismissed(true);
   };
 
   if (!visible) return null;

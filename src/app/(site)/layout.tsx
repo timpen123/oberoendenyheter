@@ -1,6 +1,7 @@
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { CookieConsentPopup } from "@/components/layout/CookieConsentPopup";
+import { AuthRecoveryRedirect } from "@/components/layout/AuthRecoveryRedirect";
 
 export default function SiteLayout({
   children,
@@ -9,6 +10,7 @@ export default function SiteLayout({
 }) {
   return (
     <div className="min-h-screen bg-muted">
+      <AuthRecoveryRedirect />
       <Header />
       <main className="flex-1">{children}</main>
       <Footer />
