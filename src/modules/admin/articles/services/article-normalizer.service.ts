@@ -1,11 +1,11 @@
 import {
   DEFAULT_CATEGORY,
-  DEFAULT_READ_TIME,
   excerptFromBody,
   firstImageFromBody,
   pickText,
   slugify,
 } from "@/modules/admin/articles/utils/article-utils";
+import { estimateReadTime } from "@/lib/readingTime";
 
 export interface ArticleInsertRow {
   title: string;
@@ -84,7 +84,7 @@ export function toArticleInsertRow(
         ? normalized.read_time
         : typeof normalized.readTime === "string"
           ? normalized.readTime
-          : DEFAULT_READ_TIME,
+          : estimateReadTime(body),
     published_at: typeof normalized.published_at === "string" ? normalized.published_at : null,
     source: typeof normalized.source === "string" ? normalized.source : null,
     external_id: typeof normalized.external_id === "string" ? normalized.external_id : null,
@@ -110,7 +110,7 @@ export function toArticleInsertRowFromFields(input: {
     excerpt: (input.excerpt ?? "").trim() || excerptFromBody(body),
     image: (input.image ?? "").trim(),
     category: (input.category ?? "").trim() || DEFAULT_CATEGORY,
-    read_time: (input.read_time ?? "").trim() || DEFAULT_READ_TIME,
+    read_time: (input.read_time ?? "").trim() || estimateReadTime(body),
     published_at: null,
     source: (input.source ?? "").trim() || null,
     external_id: (input.external_id ?? "").trim() || null,

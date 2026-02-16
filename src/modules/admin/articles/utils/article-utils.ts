@@ -1,5 +1,4 @@
 export const DEFAULT_CATEGORY = "Övrigt";
-export const DEFAULT_READ_TIME = "1 min";
 
 export function slugify(input: string): string {
   return input
