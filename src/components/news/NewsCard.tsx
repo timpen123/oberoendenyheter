@@ -20,20 +20,20 @@ export function NewsCard({ article, variant = "medium" }: NewsCardProps) {
     return (
       <article className="group cursor-pointer overflow-hidden rounded-lg bg-card transition-shadow hover:shadow-xl">
         <Link href={`/nyheter/${article.slug}`} className="block">
-          <div className="relative aspect-[21/9] overflow-hidden">
+          <div className="relative aspect-[16/9] overflow-hidden">
             <ImageWithFallback
               src={imageUrl}
               alt={article.title}
               fill
               sizes="(max-width: 1024px) 100vw, 66vw"
-              className="object-cover transition-transform duration-500 group-hover:scale-105"
+              className="object-cover object-top transition-transform duration-500 group-hover:scale-105"
             />
           </div>
-          <div className="p-6">
-            <h2 className="mb-3 line-clamp-2 text-2xl transition-colors group-hover:text-primary">
+          <div className="p-5 sm:p-6">
+            <h2 className="mb-2 line-clamp-2 text-2xl leading-tight transition-colors group-hover:text-primary">
               {article.title}
             </h2>
-            <p className="mb-4 line-clamp-2 text-muted-foreground">
+            <p className="mb-3 line-clamp-2 text-muted-foreground">
               {article.excerpt}
             </p>
             <div className="flex items-center gap-4 text-sm text-muted-foreground">

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Clock } from "lucide-react";
 import { ImageWithFallback } from "@/components/ui/ImageWithFallback";
 import { NewsCard } from "./NewsCard";
@@ -20,7 +19,7 @@ export function ArticleDetailContent({ article, relatedArticles, baseUrl }: Arti
 
   return (
     <article className="mx-auto max-w-3xl overflow-hidden rounded-lg bg-card shadow-2xl">
-      <div className="relative aspect-video w-full">
+      <div className="relative aspect-[3/2] w-full">
         <ImageWithFallback
           src={imageUrl}
           alt={article.title}
@@ -62,11 +61,6 @@ export function ArticleDetailContent({ article, relatedArticles, baseUrl }: Arti
 
       <div className="px-6 sm:px-10 pb-10">
         <div className="prose prose-neutral dark:prose-invert max-w-none">
-          {article.excerpt && (
-            <p className="mb-6 text-lg leading-relaxed text-foreground">
-              {article.excerpt}
-            </p>
-          )}
           {article.body && (
             <div
               className="text-muted-foreground [&_p]:mb-5 [&_p]:leading-relaxed [&_h2]:mt-8 [&_h2]:mb-4 [&_h2]:text-2xl"

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Menu } from "lucide-react";
 
 const categories = [
-  { name: "Nyheter", href: "/nyheter" },
+  { name: "Nyheter", href: "/" },
   { name: "Sport", href: "/sport" },
   { name: "Ekonomi", href: "/ekonomi" },
   { name: "Vetenskap", href: "/kategori/vetenskap" },
