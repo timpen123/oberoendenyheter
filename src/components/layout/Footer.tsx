@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 const sections = [
-  { label: "Nyheter", href: "/nyheter" },
+  { label: "Nyheter", href: "/" },
   { label: "Sport", href: "/sport" },
   { label: "Ekonomi", href: "/ekonomi" },
   { label: "Vetenskap", href: "/kategori/vetenskap" },

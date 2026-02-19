@@ -4,7 +4,6 @@ const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://example.com";
 
 const staticRoutes = [
   "",
-  "/nyheter",
   "/sport",
   "/ekonomi",
   "/kontakt",

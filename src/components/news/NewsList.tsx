@@ -35,7 +35,7 @@ export function NewsList() {
 
   const items: React.ReactNode[] = [];
   data.articles.forEach((article, i) => {
-    const variant = i % 7 === 0 ? "featured" : "medium";
+    const variant = i % 5 === 0 ? "featured" : "medium";
     items.push(
       <NewsCard key={article.id} article={article} variant={variant} />
     );
